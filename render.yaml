@@ -3,7 +3,9 @@ services:
     name: halal-pure-trading-bot
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: |
+      npm install
+      mkdir -p data/trades
     startCommand: node server.js
     healthCheckPath: /api/health
     envVars:
