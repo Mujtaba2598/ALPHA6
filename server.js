@@ -111,6 +111,31 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// ==================== DEBUG ENDPOINT - REMOVE AFTER FIXING ====================
+app.get('/api/debug-users', (req, res) => {
+    try {
+        const users = readUsers();
+        const debug = {};
+        for (const [email, user] of Object.entries(users)) {
+            debug[email] = {
+                hasPassword: !!user.password,
+                passwordHash: user.password ? user.password.substring(0, 30) + '...' : 'none',
+                isOwner: user.isOwner,
+                isApproved: user.isApproved,
+                isBlocked: user.isBlocked
+            };
+        }
+        res.json({ 
+            success: true, 
+            users: debug,
+            usersFileExists: fs.existsSync(usersFile),
+            usersFilePath: usersFile
+        });
+    } catch (error) {
+        res.json({ success: false, error: error.message });
+    }
+});
+
 // ==================== AUTHENTICATION ====================
 app.post('/api/register', async (req, res) => {
     const { email, password } = req.body;
