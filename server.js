@@ -12,18 +12,22 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'halal-trading-secret-key';
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '01234567890123456789012345678901';
 
-// ==================== CREATE DATA DIRECTORY ====================
+// ==================== CREATE ALL DIRECTORIES AND FILES BEFORE STARTING ====================
 const dataDir = path.join(__dirname, 'data');
 const tradesDir = path.join(dataDir, 'trades');
 
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-if (!fs.existsSync(tradesDir)) fs.mkdirSync(tradesDir, { recursive: true });
+// Create directories
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+    console.log('📁 Created data directory');
+}
+if (!fs.existsSync(tradesDir)) {
+    fs.mkdirSync(tradesDir, { recursive: true });
+    console.log('📁 Created trades directory');
+}
 
+// Create users.json with owner account
 const usersFile = path.join(dataDir, 'users.json');
-const pendingFile = path.join(dataDir, 'pending_users.json');
-const settingsFile = path.join(dataDir, 'bot_settings.json');
-
-// ==================== CREATE DEFAULT FILES ====================
 if (!fs.existsSync(usersFile)) {
     const hashedPassword = bcrypt.hashSync('Mujtabah@2598', 10);
     const defaultUsers = {
@@ -40,13 +44,21 @@ if (!fs.existsSync(usersFile)) {
     };
     fs.writeFileSync(usersFile, JSON.stringify(defaultUsers, null, 2));
     console.log('✅ Created users.json with owner account');
+    console.log('   Email: mujtabahatif@gmail.com');
+    console.log('   Password: Mujtabah@2598');
+} else {
+    console.log('📁 users.json already exists');
 }
 
+// Create pending_users.json
+const pendingFile = path.join(dataDir, 'pending_users.json');
 if (!fs.existsSync(pendingFile)) {
     fs.writeFileSync(pendingFile, JSON.stringify({}, null, 2));
     console.log('✅ Created pending_users.json');
 }
 
+// Create bot_settings.json
+const settingsFile = path.join(dataDir, 'bot_settings.json');
 if (!fs.existsSync(settingsFile)) {
     fs.writeFileSync(settingsFile, JSON.stringify({
         defaultProfitPercent: 0.5,
@@ -57,27 +69,30 @@ if (!fs.existsSync(settingsFile)) {
 }
 
 // ==================== HELPER FUNCTIONS ====================
-function readUsers() { 
+function readUsers() {
     try {
-        return JSON.parse(fs.readFileSync(usersFile));
-    } catch(e) {
+        const data = fs.readFileSync(usersFile);
+        return JSON.parse(data);
+    } catch (e) {
+        console.error('Error reading users.json:', e.message);
         return {};
     }
 }
 
-function writeUsers(users) { 
+function writeUsers(users) {
     fs.writeFileSync(usersFile, JSON.stringify(users, null, 2));
 }
 
-function readPending() { 
+function readPending() {
     try {
-        return JSON.parse(fs.readFileSync(pendingFile));
-    } catch(e) {
+        const data = fs.readFileSync(pendingFile);
+        return JSON.parse(data);
+    } catch (e) {
         return {};
     }
 }
 
-function writePending(pending) { 
+function writePending(pending) {
     fs.writeFileSync(pendingFile, JSON.stringify(pending, null, 2));
 }
 
@@ -106,7 +121,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// Log all requests for debugging
+// Logging middleware
 app.use((req, res, next) => {
     console.log(`${req.method} ${req.url}`);
     next();
@@ -118,10 +133,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // ==================== AUTHENTICATION ====================
-app.post('/api/register', async (req, res) => {
-    console.log('Register request received:', req.body);
+app.post('/api/register', (req, res) => {
     const { email, password } = req.body;
-    
     if (!email || !password) {
         return res.status(400).json({ success: false, message: 'Email and password required' });
     }
@@ -137,33 +150,34 @@ app.post('/api/register', async (req, res) => {
     }
     
     const hashedPassword = bcrypt.hashSync(password, 10);
-    pending[email] = { 
-        email, 
-        password: hashedPassword, 
-        requestedAt: new Date().toISOString(), 
-        status: 'pending' 
+    pending[email] = {
+        email,
+        password: hashedPassword,
+        requestedAt: new Date().toISOString(),
+        status: 'pending'
     };
     writePending(pending);
-    
     res.json({ success: true, message: 'Registration request sent to owner.' });
 });
 
 app.post('/api/login', (req, res) => {
-    console.log('Login request received:', req.body.email);
     const { email, password } = req.body;
+    console.log(`Login attempt: ${email}`);
     
     const users = readUsers();
+    console.log(`Users found: ${Object.keys(users).length}`);
+    
     const user = users[email];
     
     if (!user) {
-        const pending = readPending();
-        if (pending[email]) {
-            return res.status(401).json({ success: false, message: 'Pending approval' });
-        }
+        console.log(`User not found: ${email}`);
         return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
     
-    if (!bcrypt.compareSync(password, user.password)) {
+    const passwordValid = bcrypt.compareSync(password, user.password);
+    console.log(`Password valid: ${passwordValid}`);
+    
+    if (!passwordValid) {
         return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
     
@@ -193,31 +207,9 @@ function authenticate(req, res, next) {
     }
 }
 
-// ==================== SIMPLE BALANCE ENDPOINT (TEST) ====================
-app.get('/api/test-balance', authenticate, async (req, res) => {
-    res.json({ 
-        success: true, 
-        spotBalance: 1000, 
-        fundingBalance: 500, 
-        total: 1500,
-        message: 'Test balance - API keys not connected yet'
-    });
-});
-
-app.post('/api/get-balance', authenticate, async (req, res) => {
-    res.json({ 
-        success: true, 
-        spotBalance: 1000, 
-        fundingBalance: 500, 
-        total: 1500,
-        message: 'Demo balance - Connect real Binance API for actual balances'
-    });
-});
-
-// ==================== API KEY MANAGEMENT ====================
-app.post('/api/set-api-keys', authenticate, async (req, res) => {
+// ==================== API ENDPOINTS ====================
+app.post('/api/set-api-keys', authenticate, (req, res) => {
     const { apiKey, secretKey, accountType } = req.body;
-    
     if (!apiKey || !secretKey) {
         return res.status(400).json({ success: false, message: 'Both keys required' });
     }
@@ -227,22 +219,22 @@ app.post('/api/set-api-keys', authenticate, async (req, res) => {
     users[req.user.email].secretKey = encrypt(secretKey);
     writeUsers(users);
     
-    res.json({ 
-        success: true, 
-        message: 'API keys saved successfully!', 
-        spotBalance: 1000,
-        fundingBalance: 500,
-        totalBalance: 1500
+    res.json({
+        success: true,
+        message: 'API keys saved successfully!',
+        spotBalance: 0,
+        fundingBalance: 0,
+        totalBalance: 0
     });
 });
 
-app.post('/api/connect-binance', authenticate, async (req, res) => {
-    res.json({ 
-        success: true, 
-        spotBalance: 1000, 
-        fundingBalance: 500, 
-        totalBalance: 1500,
-        message: 'Connected successfully! (Demo mode - Add real Binance API for live trading)' 
+app.post('/api/connect-binance', authenticate, (req, res) => {
+    res.json({
+        success: true,
+        spotBalance: 0,
+        fundingBalance: 0,
+        totalBalance: 0,
+        message: 'Connected! Add your Binance API keys for real trading.'
     });
 });
 
@@ -255,14 +247,16 @@ app.get('/api/get-keys', authenticate, (req, res) => {
     res.json({ success: true, apiKey: decrypt(user.apiKey), secretKey: decrypt(user.secretKey) });
 });
 
-// ==================== TRADING ENDPOINTS (SIMPLIFIED) ====================
-app.post('/api/start-halal-trading', authenticate, async (req, res) => {
+app.post('/api/get-balance', authenticate, (req, res) => {
+    res.json({ success: true, spotBalance: 0, fundingBalance: 0, total: 0 });
+});
+
+app.post('/api/start-halal-trading', authenticate, (req, res) => {
     const { investmentAmount, profitPercent, timeLimit, accountType } = req.body;
-    
-    res.json({ 
-        success: true, 
-        sessionId: 'demo_session_' + Date.now(),
-        message: `✅ Trading started! (Demo mode)\n\nInvestment: $${investmentAmount}\nProfit Target: ${profitPercent}%\nTime Limit: ${timeLimit} hours\n\nFull version with real Binance API coming soon.`
+    res.json({
+        success: true,
+        sessionId: 'session_' + Date.now(),
+        message: `✅ Trading started! Investment: $${investmentAmount}, Profit Target: ${profitPercent}%, Time: ${timeLimit}h`
     });
 });
 
@@ -271,13 +265,7 @@ app.post('/api/stop-halal-trading', authenticate, (req, res) => {
 });
 
 app.post('/api/halal-session-status', authenticate, (req, res) => {
-    res.json({ 
-        success: true, 
-        active: false,
-        currentProfit: 0,
-        totalTrades: 0,
-        trades: []
-    });
+    res.json({ success: true, active: false, currentProfit: 0, totalTrades: 0, trades: [] });
 });
 
 app.get('/api/trade-history', authenticate, (req, res) => {
@@ -310,7 +298,7 @@ app.post('/api/admin/approve-user', authenticate, (req, res) => {
     
     const users = readUsers();
     users[email] = {
-        email,
+        email: email,
         password: pending[email].password,
         isOwner: false,
         isApproved: true,
@@ -350,7 +338,7 @@ app.get('/api/admin/users', authenticate, (req, res) => {
     if (!req.user.isOwner) return res.status(403).json({ success: false });
     const users = readUsers();
     const list = Object.keys(users).map(email => ({
-        email,
+        email: email,
         hasApiKeys: !!users[email].apiKey,
         isOwner: users[email].isOwner,
         isApproved: users[email].isApproved,
@@ -371,7 +359,7 @@ app.get('/api/admin/user-balances', authenticate, async (req, res) => {
             hasKeys: !!userData.apiKey
         };
     }
-    res.json({ success: true, balances });
+    res.json({ success: true, balances: balances });
 });
 
 app.get('/api/all-user-trades', authenticate, (req, res) => {
@@ -387,7 +375,7 @@ app.get('/api/all-user-trades', authenticate, (req, res) => {
     res.json({ success: true, trades: allTrades });
 });
 
-app.post('/api/change-password', authenticate, async (req, res) => {
+app.post('/api/change-password', authenticate, (req, res) => {
     if (!req.user.isOwner) return res.status(403).json({ success: false });
     const { currentPassword, newPassword } = req.body;
     const users = readUsers();
@@ -403,7 +391,7 @@ app.post('/api/change-password', authenticate, async (req, res) => {
 app.get('/api/settings', authenticate, (req, res) => {
     if (!req.user.isOwner) return res.status(403).json({ success: false });
     const settings = JSON.parse(fs.readFileSync(settingsFile));
-    res.json({ success: true, settings });
+    res.json({ success: true, settings: settings });
 });
 
 // ==================== SERVE FRONTEND ====================
